@@ -3,24 +3,42 @@ import streamlit as st
 from openai import OpenAI
 from gtts import gTTS
 import tempfile
+import matplotlib.pyplot as plt
 
-# Inicializar cliente OpenAI
+# -----------------------------
+# Inicialização
+# -----------------------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+st.set_page_config(page_title="IA Leitora Amigável", layout="wide")
 
-st.set_page_config(page_title="IA Leitora de Planilhas", layout="wide")
-st.title("📊 IA Leitora de Planilhas Excel com Voz - Pontuar Tech")
+st.title("📊 IA Leitora de Planilhas - Pontuar tech")
+st.markdown("Siga os passos: 1️⃣ Carregue sua planilha → 2️⃣ Faça sua pergunta → 3️⃣ Veja e ouça a resposta!")
 
-# Upload do arquivo XLSX
-uploaded_file = st.file_uploader("📂 Carregue sua planilha (.xlsx)", type=["xlsx"])
+# -----------------------------
+# Sessão de histórico e contadores
+# -----------------------------
+if "historico" not in st.session_state:
+    st.session_state["historico"] = []
+
+if "respostas_uteis" not in st.session_state:
+    st.session_state["respostas_uteis"] = 0
+
+# -----------------------------
+# Upload da planilha
+# -----------------------------
+uploaded_file = st.file_uploader("📂 Carregue sua planilha Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file is not None:
-    df = pd.read_excel(uploaded_file)
-    st.success("✅ Planilha carregada com sucesso!")
+    try:
+        df = pd.read_excel(uploaded_file)
+        st.success("✅ Planilha carregada com sucesso!")
+    except Exception:
+        st.error("❌ Não foi possível ler o arquivo. Certifique-se de que é um .xlsx válido.")
+        st.stop()
 
-    if "historico" not in st.session_state:
-        st.session_state["historico"] = []
-
-    # FAQ
+    # -----------------------------
+    # FAQ na barra lateral
+    # -----------------------------
     st.sidebar.title("❓ Perguntas Frequentes")
     perguntas_frequentes = [
         "Qual foi o gasto mais alto?",
@@ -33,43 +51,46 @@ if uploaded_file is not None:
         if st.sidebar.button(p):
             st.session_state["pergunta"] = p
 
-    # Limpar histórico
+    # Botão de limpar histórico
     if st.sidebar.button("🗑 Limpar Histórico"):
         st.session_state["historico"] = []
+        st.session_state["respostas_uteis"] = 0
         st.success("✅ Histórico limpo!")
 
-    # Caixa de texto
-    pergunta = st.text_input("Digite sua pergunta:", st.session_state.get("pergunta", ""))
+    st.sidebar.metric("Respostas úteis", st.session_state["respostas_uteis"])
+
+    # -----------------------------
+    # Caixa de pergunta
+    # -----------------------------
+    pergunta = st.text_input("💬 Faça sua pergunta:", st.session_state.get("pergunta", ""))
     tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
 
     if st.button("🔍 Perguntar") and pergunta:
         resumo = df.describe(include="all").to_string()
 
+        # Chamar IA
         resposta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "Você é um assistente que explica dados de planilha em português de forma clara e acessível. "
-                        "Para cada pergunta, gere DUAS respostas separadas:\n\n"
-                        "1) Resumo simples: curto, direto, fácil de entender para qualquer pessoa mas que demonstre os dados de forma clara.\n"
-                        "2) Detalhes adicionais: análise completa com base nos dados, incluindo insights, comparações e tendências. "
-                        "Explique como interpretar os valores e sugira maneiras de tornar a resposta mais objetiva e certeira. "
-                        "Use linguagem simples, mas inclua exemplos concretos de dados e valores reais (R$). "
-                        "Evite usar código ou termos técnicos difíceis."
+                        "Você é um assistente que explica dados de planilha de forma MUITO simples. "
+                        "Gere duas respostas separadas:\n"
+                        "1) Resumo simples: curto e direto para qualquer pessoa.\n"
+                        "2) Detalhes adicionais: análise completa, insights, comparações, tendências e sugestões para tornar a resposta mais objetiva."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"A planilha tem os seguintes dados resumidos:\n{resumo}\n\nPergunta do usuário: {pergunta}",
-                },
-            ],
+                    "content": f"Planilha resumida:\n{resumo}\nPergunta: {pergunta}"
+                }
+            ]
         )
 
         texto_completo = resposta.choices[0].message.content
 
-        # Separar Resumo simples / Detalhes
+        # Separar resumo e detalhes
         if "Resumo simples:" in texto_completo and "Detalhes adicionais:" in texto_completo:
             resumo_simples = texto_completo.split("Resumo simples:")[1].split("Detalhes adicionais:")[0].strip()
             detalhes = texto_completo.split("Detalhes adicionais:")[1].strip()
@@ -77,23 +98,46 @@ if uploaded_file is not None:
             resumo_simples = texto_completo
             detalhes = texto_completo
 
-        # Escolher qual mostrar
         resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
-        st.write("✅ Resposta gerada!")
+
+        # Mostrar resposta
+        st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
-                # Text-to-Speech
+        # Botão para marcar como útil
+        if st.button("👍 Marcar resposta como útil"):
+            st.session_state["respostas_uteis"] += 1
+            st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
+
+        # Leitura em voz
         tts = gTTS(text=resposta_final, lang='pt')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
             st.audio(fp.name, format="audio/mp3")
 
-        # Salvar no histórico
+        # Adicionar ao histórico
         st.session_state["historico"].append(
             {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
         )
 
-# Mostrar histórico
+        # -----------------------------
+        # Gráfico rápido (opcional)
+        # -----------------------------
+        if tipo_resposta == "Detalhes adicionais":
+            st.subheader("📊 Visualização rápida dos dados")
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
+                ax.set_ylabel("Valores")
+                ax.set_title("Soma por coluna numérica")
+                st.pyplot(fig)
+            else:
+                st.info("Nenhuma coluna numérica para mostrar gráfico.")
+
+# -----------------------------
+# Histórico de perguntas
+# -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas")
     for h in reversed(st.session_state["historico"][-10:]):
