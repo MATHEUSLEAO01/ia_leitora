@@ -104,10 +104,31 @@ if uploaded_file is not None:
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
-        # Botão para marcar como útil
-        if st.button("👍 Marcar resposta como útil"):
-            st.session_state["respostas_uteis"] += 1
-            st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
+        # Botão para marcar como útil ou não útil
+        st.subheader("Feedback da resposta")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("👍 Resposta útil"):
+                st.session_state["respostas_uteis"] += 1
+                st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
+        
+        with col2:
+            if st.button("👎 Resposta não útil"):
+                # Mostrar campo para o usuário informar o motivo
+                motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
+                if motivo:
+                    st.warning("Obrigado pelo feedback! Registramos sua resposta.")
+                    # Adicionar ao histórico junto com o motivo
+                    st.session_state["historico"].append(
+                        {
+                            "pergunta": pergunta,
+                            "resposta": resposta_final,
+                            "tipo": tipo_resposta,
+                            "util": False,
+                            "motivo": motivo
+                        }
+                    )
 
         # Leitura em voz
         tts = gTTS(text=resposta_final, lang='pt')
@@ -120,20 +141,22 @@ if uploaded_file is not None:
             {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
         )
 
-        # -----------------------------
-        # Gráfico rápido (opcional)
-        # -----------------------------
-        if tipo_resposta == "Detalhes adicionais":
-            st.subheader("📊 Visualização rápida dos dados")
-            numeric_cols = df.select_dtypes(include="number").columns
-            if len(numeric_cols) > 0:
-                fig, ax = plt.subplots()
-                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
-                ax.set_ylabel("Valores")
-                ax.set_title("Soma por coluna numérica")
-                st.pyplot(fig)
-            else:
-                st.info("Nenhuma coluna numérica para mostrar gráfico.")
+       # -----------------------------
+# Botão para gerar gráfico
+# -----------------------------
+if st.session_state.get("historico"):
+    st.subheader("📊 Gráfico opcional")
+    if st.button("📈 Gerar gráfico dos dados"):
+        numeric_cols = df.select_dtypes(include="number").columns
+        if len(numeric_cols) > 0:
+            fig, ax = plt.subplots()
+            df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
+            ax.set_ylabel("Valores")
+            ax.set_title("Soma por coluna numérica")
+            st.pyplot(fig)
+        else:
+            st.info("Nenhuma coluna numérica para mostrar gráfico.")
+se o 
 
 # -----------------------------
 # Histórico de perguntas
