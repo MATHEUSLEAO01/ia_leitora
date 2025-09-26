@@ -10,7 +10,7 @@ st.title("Chat com Planilha Excel 📊")
 df = pd.read_excel("IA.xlsx")
 
 # API Key do OpenAI (usar variável de ambiente)
-api_key = os.environ.get("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")
+api_key = os.environ.get("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")
 client = OpenAI(api_key=api_key)
 
 # Input do usuário
