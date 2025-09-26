@@ -3,3 +3,4 @@ openai
 streamlit
 openpyxl
 gtts
+matplotlib
