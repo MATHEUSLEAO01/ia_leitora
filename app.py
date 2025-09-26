@@ -13,7 +13,6 @@ st.title("📊 IA Leitora de Planilhas Excel")
 uploaded_file = st.file_uploader("📂 Carregue sua planilha (.xlsx)", type=["xlsx"])
 
 if uploaded_file is not None:
-    # Ler a planilha
     df = pd.read_excel(uploaded_file)
     st.success("✅ Planilha carregada com sucesso!")
 
@@ -43,7 +42,9 @@ if uploaded_file is not None:
     # Caixa de texto para perguntas
     pergunta = st.text_input("Digite sua pergunta:", st.session_state.get("pergunta", ""))
 
-    # Botão para enviar pergunta
+    # Radio para escolher o tipo de resposta
+    tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
+
     if st.button("🔍 Perguntar") and pergunta:
         resumo = df.describe(include="all").to_string()
 
@@ -53,12 +54,11 @@ if uploaded_file is not None:
                 {
                     "role": "system",
                     "content": (
-                        "Você é um assistente que explica dados de planilha "
-                        "em linguagem MUITO simples, clara e fácil. "
-                        "Explique como se estivesse falando para alguém que não sabe ler bem, "
-                        "usando frases curtas e exemplos do dia a dia. "
-                        "Sempre mostre valores em reais (R$) e use comparações simples. "
-                        "Não use código ou termos difíceis."
+                        "Você é um assistente que explica dados de planilha em linguagem MUITO simples e clara. "
+                        "Gere DUAS respostas para cada pergunta: "
+                        "1) Um resumo simples, curto, fácil de entender para qualquer pessoa. "
+                        "2) Uma explicação mais detalhada, com contexto adicional e comparações. "
+                        "Sempre use valores em reais (R$) e não use código."
                     ),
                 },
                 {
@@ -68,19 +68,38 @@ if uploaded_file is not None:
             ],
         )
 
-        resposta_final = resposta.choices[0].message.content
-        st.write("✅ Resposta gerada!")
-        st.write(resposta_final)
+        # A IA deve devolver duas respostas separadas por marcações claras
+        texto_completo = resposta.choices[0].message.content
 
-        # Adicionar ao histórico
+        # Separar por marcação ou palavras-chave se a IA seguir o padrão:
+        if "Resumo simples:" in texto_completo and "Detalhes adicionais:" in texto_completo:
+            resumo_simples = texto_completo.split("Resumo simples:")[1].split("Detalhes adicionais:")[0].strip()
+            detalhes = texto_completo.split("Detalhes adicionais:")[1].strip()
+        else:
+            # fallback caso a IA não siga o padrão
+            resumo_simples = texto_completo
+            detalhes = texto_completo
+
+        # Mostrar a resposta escolhida pelo usuário
+        if tipo_resposta == "Resumo simples":
+            st.write("✅ Resumo simples:")
+            st.write(resumo_simples)
+            resposta_final = resumo_simples
+        else:
+            st.write("✅ Detalhes adicionais:")
+            st.write(detalhes)
+            resposta_final = detalhes
+
+        # Salvar no histórico
         st.session_state["historico"].append(
-            {"pergunta": pergunta, "resposta": resposta_final}
+            {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
         )
 
 # Mostrar histórico de perguntas
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas")
-    for h in reversed(st.session_state["historico"][-10:]):  # mostra últimos 10
+    for h in reversed(st.session_state["historico"][-10:]):  # últimos 10
         st.markdown(f"**Pergunta:** {h['pergunta']}")
+        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
         st.markdown(f"**Resposta:** {h['resposta']}")
         st.markdown("---")
