@@ -141,7 +141,7 @@ if uploaded_file is not None:
     # -----------------------------
     # Botões para gráficos e resumo visual
     # -----------------------------
-    st.subheader("📊 Visualizações (opcional)")
+    st.subheader("📊 Visualizações (Ainda em teste - Precisar se bem claro para funcionar)")
     col_graf, col_visual = st.columns(2)
 
     with col_graf:
