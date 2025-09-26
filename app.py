@@ -3,8 +3,7 @@ import pandas as pd
 import os
 from openai import OpenAI
 
-# Configurar cliente OpenAI
-api_key = os.environ.get("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")
+api_key = os.environ.get("OPENAI_API_KEY")
 if not api_key:
     raise ValueError("❌ API Key não encontrada. Configure no Secrets.")
 
