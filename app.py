@@ -8,7 +8,7 @@ import tempfile
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.set_page_config(page_title="IA Leitora de Planilhas", layout="wide")
-st.title("📊 IA Leitora de Planilhas Excel com Voz")
+st.title("📊 IA Leitora de Planilhas Excel com Voz - Pontuar tech")
 
 # Upload do arquivo XLSX
 uploaded_file = st.file_uploader("📂 Carregue sua planilha (.xlsx)", type=["xlsx"])
