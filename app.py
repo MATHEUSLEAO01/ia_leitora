@@ -104,7 +104,9 @@ if uploaded_file is not None:
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
+        # -----------------------------
         # Botão para marcar como útil ou não útil
+        # -----------------------------
         st.subheader("Feedback da resposta")
         col1, col2 = st.columns(2)
 
@@ -112,39 +114,34 @@ if uploaded_file is not None:
             if st.button("👍 Resposta útil"):
                 st.session_state["respostas_uteis"] += 1
                 st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
-        
+                # Adicionar ao histórico como útil
+                st.session_state["historico"].append(
+                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True}
+                )
+
         with col2:
             if st.button("👎 Resposta não útil"):
                 # Mostrar campo para o usuário informar o motivo
                 motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
                 if motivo:
                     st.warning("Obrigado pelo feedback! Registramos sua resposta.")
-                    # Adicionar ao histórico junto com o motivo
+                    # Adicionar ao histórico como não útil
                     st.session_state["historico"].append(
-                        {
-                            "pergunta": pergunta,
-                            "resposta": resposta_final,
-                            "tipo": tipo_resposta,
-                            "util": False,
-                            "motivo": motivo
-                        }
+                        {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": False, "motivo": motivo}
                     )
 
+        # -----------------------------
         # Leitura em voz
+        # -----------------------------
         tts = gTTS(text=resposta_final, lang='pt')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
             st.audio(fp.name, format="audio/mp3")
 
-        # Adicionar ao histórico
-        st.session_state["historico"].append(
-            {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
-        )
-
-       # -----------------------------
+# -----------------------------
 # Botão para gerar gráfico
 # -----------------------------
-if st.session_state.get("historico"):
+if uploaded_file is not None and st.session_state.get("historico"):
     st.subheader("📊 Gráfico opcional")
     if st.button("📈 Gerar gráfico dos dados"):
         numeric_cols = df.select_dtypes(include="number").columns
@@ -156,7 +153,6 @@ if st.session_state.get("historico"):
             st.pyplot(fig)
         else:
             st.info("Nenhuma coluna numérica para mostrar gráfico.")
-se o 
 
 # -----------------------------
 # Histórico de perguntas
@@ -167,4 +163,6 @@ if st.session_state.get("historico"):
         st.markdown(f"**Pergunta:** {h['pergunta']}")
         st.markdown(f"**Tipo de resposta:** {h['tipo']}")
         st.markdown(f"**Resposta:** {h['resposta']}")
+        if not h.get("util", True):
+            st.markdown(f"**Motivo da não utilidade:** {h.get('motivo', 'Não informado')}")
         st.markdown("---")
