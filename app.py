@@ -23,6 +23,9 @@ if "historico" not in st.session_state:
 if "respostas_uteis" not in st.session_state:
     st.session_state["respostas_uteis"] = 0
 
+if "nao_util" not in st.session_state:
+    st.session_state["nao_util"] = False
+
 # -----------------------------
 # Upload da planilha
 # -----------------------------
@@ -104,65 +107,77 @@ if uploaded_file is not None:
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
-        # -----------------------------
-        # Botão para marcar como útil ou não útil
-        # -----------------------------
+        # Botões de feedback
         st.subheader("Feedback da resposta")
         col1, col2 = st.columns(2)
-
         with col1:
             if st.button("👍 Resposta útil"):
                 st.session_state["respostas_uteis"] += 1
                 st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
-                # Adicionar ao histórico como útil
+                # Adicionar ao histórico
                 st.session_state["historico"].append(
-                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True}
+                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True, "motivo": ""}
                 )
 
         with col2:
             if st.button("👎 Resposta não útil"):
-                # Mostrar campo para o usuário informar o motivo
-                motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
-                if motivo:
-                    st.warning("Obrigado pelo feedback! Registramos sua resposta.")
-                    # Adicionar ao histórico como não útil
-                    st.session_state["historico"].append(
-                        {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": False, "motivo": motivo}
-                    )
+                st.session_state["nao_util"] = True
 
-        # -----------------------------
+        if st.session_state["nao_util"]:
+            motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
+            if motivo:
+                st.warning("Obrigado pelo feedback! Registramos sua resposta.")
+                st.session_state["historico"].append(
+                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": False, "motivo": motivo}
+                )
+                st.session_state["nao_util"] = False
+
         # Leitura em voz
-        # -----------------------------
         tts = gTTS(text=resposta_final, lang='pt')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
             st.audio(fp.name, format="audio/mp3")
 
-# -----------------------------
-# Botão para gerar gráfico
-# -----------------------------
-if uploaded_file is not None and st.session_state.get("historico"):
-    st.subheader("📊 Gráfico opcional")
-    if st.button("📈 Gerar gráfico dos dados"):
-        numeric_cols = df.select_dtypes(include="number").columns
-        if len(numeric_cols) > 0:
-            fig, ax = plt.subplots()
-            df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
-            ax.set_ylabel("Valores")
-            ax.set_title("Soma por coluna numérica")
-            st.pyplot(fig)
-        else:
-            st.info("Nenhuma coluna numérica para mostrar gráfico.")
+    # -----------------------------
+    # Botões para gráficos e resumo visual
+    # -----------------------------
+    st.subheader("📊 Visualizações (opcional)")
+    col_graf, col_visual = st.columns(2)
+
+    with col_graf:
+        if st.button("📈 Gerar gráfico dos dados"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
+                ax.set_ylabel("Valores")
+                ax.set_title("Soma por coluna numérica")
+                st.pyplot(fig)
+            else:
+                st.info("Nenhuma coluna numérica para mostrar gráfico.")
+
+    with col_visual:
+        if st.button("🎨 Resumo visual simplificado"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].mean().sort_values().plot(kind="bar", ax=ax, color="lightgreen")
+                ax.set_ylabel("Média por coluna")
+                ax.set_title("Resumo visual simplificado")
+                st.pyplot(fig)
+                st.write("Esse gráfico mostra a média de cada coluna numérica da planilha de forma simples.")
+            else:
+                st.info("Nenhuma coluna numérica para gerar resumo visual.")
 
 # -----------------------------
 # Histórico de perguntas
 # -----------------------------
 if st.session_state.get("historico"):
-    st.subheader("📜 Histórico de Perguntas")
+    st.subheader("📜 Histórico de Perguntas (últimas 10)")
     for h in reversed(st.session_state["historico"][-10:]):
         st.markdown(f"**Pergunta:** {h['pergunta']}")
         st.markdown(f"**Tipo de resposta:** {h['tipo']}")
         st.markdown(f"**Resposta:** {h['resposta']}")
-        if not h.get("util", True):
-            st.markdown(f"**Motivo da não utilidade:** {h.get('motivo', 'Não informado')}")
+        if not h["util"]:
+            st.markdown(f"**Motivo não útil:** {h['motivo']}")
         st.markdown("---")
