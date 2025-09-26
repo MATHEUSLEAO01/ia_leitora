@@ -51,10 +51,13 @@ if uploaded_file is not None:
                 {
                     "role": "system",
                     "content": (
-                        "Você é um assistente que explica dados de planilha de forma MUITO simples. "
-                        "Gere duas respostas: Resumo simples (curto) e Detalhes adicionais. "
-                        "Valores em reais (R$), linguagem fácil para qualquer pessoa. "
-                        "Não use código ou termos difíceis."
+                        "Você é um assistente que explica dados de planilha em português de forma clara e acessível. "
+                        "Para cada pergunta, gere DUAS respostas separadas:\n\n"
+                        "1) Resumo simples: curto, direto, fácil de entender para qualquer pessoa mas que demonstre os dados de forma clara.\n"
+                        "2) Detalhes adicionais: análise completa com base nos dados, incluindo insights, comparações e tendências. "
+                        "Explique como interpretar os valores e sugira maneiras de tornar a resposta mais objetiva e certeira. "
+                        "Use linguagem simples, mas inclua exemplos concretos de dados e valores reais (R$). "
+                        "Evite usar código ou termos técnicos difíceis."
                     ),
                 },
                 {
@@ -85,16 +88,6 @@ if uploaded_file is not None:
             tts.save(fp.name)
             st.audio(fp.name, format="audio/mp3")
 
-        # Salvar histórico
+        # Salvar no histórico
         st.session_state["historico"].append(
             {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
-        )
-
-# Mostrar histórico
-if st.session_state.get("historico"):
-    st.subheader("📜 Histórico de Perguntas")
-    for h in reversed(st.session_state["historico"][-10:]):
-        st.markdown(f"**Pergunta:** {h['pergunta']}")
-        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
-        st.markdown(f"**Resposta:** {h['resposta']}")
-        st.markdown("---")
