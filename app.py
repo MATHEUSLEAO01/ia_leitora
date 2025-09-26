@@ -37,7 +37,7 @@ if uploaded_file:
         if st.sidebar.button(pergunta):
             st.session_state["pergunta"] = pergunta
 
-    # Caixa de texto para perguntas
+   # Caixa de texto para perguntas
     pergunta = st.text_input("Digite sua pergunta:", st.session_state.get("pergunta", ""))
 
     if st.button("🔍 Perguntar") and pergunta:
@@ -56,4 +56,20 @@ if uploaded_file:
                 resposta_texto = resposta.choices[0].message.content
 
                 # Guardar no histórico
-                st.session_state["histor]()_
+                st.session_state["historico"].append({"pergunta": pergunta, "resposta": resposta_texto})
+
+                st.success("✅ Resposta gerada!")
+                st.write(resposta_texto)
+
+            except Exception as e:
+                st.error(f"❌ Erro ao consultar a IA: {e}")
+
+    # Histórico
+    if st.session_state["historico"]:
+        st.subheader("📜 Histórico de Perguntas")
+        for item in reversed(st.session_state["historico"][-5:]):
+            st.markdown(f"**Pergunta:** {item['pergunta']}")
+            st.markdown(f"**Resposta:** {item['resposta']}")
+            st.markdown("---")
+else:
+    st.info("👆 Envie uma planilha Excel para começar.")
