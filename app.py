@@ -82,7 +82,7 @@ if uploaded_file is not None:
         st.write("✅ Resposta gerada!")
         st.write(resposta_final)
 
-        # Text-to-Speech
+                # Text-to-Speech
         tts = gTTS(text=resposta_final, lang='pt')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
@@ -91,3 +91,13 @@ if uploaded_file is not None:
         # Salvar no histórico
         st.session_state["historico"].append(
             {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta}
+        )
+
+# Mostrar histórico
+if st.session_state.get("historico"):
+    st.subheader("📜 Histórico de Perguntas")
+    for h in reversed(st.session_state["historico"][-10:]):
+        st.markdown(f"**Pergunta:** {h['pergunta']}")
+        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
+        st.markdown(f"**Resposta:** {h['resposta']}")
+        st.markdown("---")
