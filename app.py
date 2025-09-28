@@ -21,15 +21,17 @@ st.markdown(
 # Sessão
 # -----------------------------
 if "historico" not in st.session_state:
-    st.session_state["historico"] = []
-if "respostas_uteis" not in st.session_state:
-    st.session_state["respostas_uteis"] = 0
+    st.session_state["historico"] = {}
+if "contador" not in st.session_state:
+    st.session_state["contador"] = 0
 if "nao_util" not in st.session_state:
     st.session_state["nao_util"] = False
 if "info_adicional" not in st.session_state:
     st.session_state["info_adicional"] = ""
 if "tipo_planilha" not in st.session_state:
     st.session_state["tipo_planilha"] = ""
+if "respostas_uteis" not in st.session_state:
+    st.session_state["respostas_uteis"] = 0
 
 # -----------------------------
 # Upload da planilha
@@ -53,6 +55,21 @@ if uploaded_file:
     )
     if tipo_planilha:
         st.session_state["tipo_planilha"] = tipo_planilha
+
+    # -----------------------------
+    # Função de registro do histórico
+    # -----------------------------
+    def registrar_historico(pergunta, resposta, tipo, util, motivo="", info_adicional=""):
+        st.session_state["contador"] += 1
+        key = f"q_{st.session_state['contador']}"
+        st.session_state["historico"][key] = {
+            "pergunta": pergunta,
+            "resposta": resposta,
+            "tipo": tipo,
+            "util": util,
+            "motivo": motivo,
+            "info_adicional": info_adicional
+        }
 
     # -----------------------------
     # Detecção avançada de colunas
@@ -116,7 +133,7 @@ if uploaded_file:
 
     # Limpar histórico
     if st.sidebar.button("🗑 Limpar Histórico"):
-        st.session_state["historico"] = []
+        st.session_state["historico"] = {}
         st.session_state["respostas_uteis"] = 0
         st.success("✅ Histórico limpo!")
 
@@ -204,35 +221,23 @@ if uploaded_file:
         # -----------------------------
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("👍 Resposta útil", key=f"btn_util_{pergunta}"):
+            if st.button("👍 Resposta útil", key=f"util_{st.session_state['contador']}"):
                 st.session_state["respostas_uteis"] += 1
-                st.session_state["historico"].append({
-                    "pergunta": pergunta,
-                    "resposta": resposta_final,
-                    "tipo": tipo_resposta,
-                    "util": True,
-                    "motivo": ""
-                })
+                registrar_historico(pergunta, resposta_final, tipo_resposta, util=True)
                 st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
 
         with col2:
-            if st.button("👎 Resposta não útil", key=f"btn_nao_util_{pergunta}"):
+            if st.button("👎 Resposta não útil", key=f"nao_util_{st.session_state['contador']}"):
                 st.session_state["nao_util"] = True
 
         if st.session_state["nao_util"]:
-            motivo = st.text_input("❌ Motivo da resposta não ser útil:", key=f"motivo_{pergunta}")
+            motivo = st.text_input("❌ Motivo da resposta não ser útil:", key=f"motivo_{st.session_state['contador']}")
             info_adicional = st.text_area(
                 "📝 Mais informações sobre a planilha (colunas, contexto, período, etc.):",
-                key=f"info_{pergunta}"
+                key=f"info_{st.session_state['contador']}"
             )
             if motivo and info_adicional:
-                st.session_state["historico"].append({
-                    "pergunta": pergunta,
-                    "resposta": resposta_final,
-                    "tipo": tipo_resposta,
-                    "util": False,
-                    "motivo": motivo
-                })
+                registrar_historico(pergunta, resposta_final, tipo_resposta, util=False, motivo=motivo, info_adicional=info_adicional)
                 st.session_state["info_adicional"] = info_adicional
                 st.session_state["nao_util"] = False
                 st.success("Feedback registrado com sucesso!")
@@ -248,8 +253,6 @@ if uploaded_file:
                 st.audio(mp3_fp.getvalue(), format="audio/mp3")
             except Exception as e:
                 st.warning(f"Não foi possível gerar áudio: {e}")
-        else:
-            st.info("🗣 Nenhum texto para gerar áudio.")
 
     # -----------------------------
     # Visualizações
@@ -286,10 +289,12 @@ if uploaded_file:
 # -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas (últimas 10)")
-    for h in reversed(st.session_state["historico"][-10:]):
+    for key, h in reversed(list(st.session_state["historico"].items())[-10:]):
         st.markdown(f"**Pergunta:** {h['pergunta']}")
         st.markdown(f"**Tipo de resposta:** {h['tipo']}")
         st.markdown(f"**Resposta:** {h['resposta']}")
+        if h.get("info_adicional"):
+            st.markdown(f"**Info adicional:** {h['info_adicional']}")
         if not h["util"]:
             st.markdown(f"**Motivo não útil:** {h['motivo']}")
         st.markdown("---")
