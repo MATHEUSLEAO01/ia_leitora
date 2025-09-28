@@ -69,9 +69,24 @@ if uploaded_file is not None:
     tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
 
     if st.button("🔍 Perguntar") and pergunta:
-        # Criar resumo estruturado para IA
-        colunas = df.dtypes.to_dict()
-        estatisticas = df.describe(include="all", datetime_is_numeric=True).to_dict()
+        # -----------------------------
+        # Criar resumo seguro da planilha
+        # -----------------------------
+        # Colunas e tipos
+        colunas = df.dtypes.apply(lambda x: str(x)).to_dict()
+        
+        # Estatísticas numéricas
+        estatisticas_numericas = df.select_dtypes(include="number").describe().to_dict()
+        
+        # Estatísticas categóricas
+        estatisticas_categoricas = df.select_dtypes(include=["object", "category"]).describe().to_dict()
+        
+        estatisticas = {
+            "numéricas": estatisticas_numericas,
+            "categóricas": estatisticas_categoricas
+        }
+
+        # Amostra de dados
         amostra = df.head(20).to_dict(orient="records")
 
         resumo = {
@@ -114,7 +129,9 @@ if uploaded_file is not None:
 
         texto_completo = resposta.choices[0].message.content
 
+        # -----------------------------
         # Separar resumo e detalhes
+        # -----------------------------
         if "Resumo simples:" in texto_completo and "Detalhes adicionais:" in texto_completo:
             resumo_simples = texto_completo.split("Resumo simples:")[1].split("Detalhes adicionais:")[0].strip()
             detalhes = texto_completo.split("Detalhes adicionais:")[1].strip()
@@ -124,18 +141,21 @@ if uploaded_file is not None:
 
         resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
 
+        # -----------------------------
         # Mostrar resposta
+        # -----------------------------
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
-        # Botões de feedback
+        # -----------------------------
+        # Feedback
+        # -----------------------------
         st.subheader("Feedback da resposta")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("👍 Resposta útil"):
                 st.session_state["respostas_uteis"] += 1
                 st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
-                # Adicionar ao histórico
                 st.session_state["historico"].append(
                     {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True, "motivo": ""}
                 )
@@ -153,92 +173,16 @@ if uploaded_file is not None:
                 )
                 st.session_state["nao_util"] = False
 
+        # -----------------------------
         # Leitura em voz
+        # -----------------------------
         tts = gTTS(text=resposta_final, lang='pt')
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
             st.audio(fp.name, format="audio/mp3")
 
     # -----------------------------
-    # Botões para gráficos e resumo visual
-    # -----------------------------
-    st.subheader("📊 Visualizações")
-    col_graf, col_visual = st.columns(2)
-
-    with col_graf:
-        if st.button("📈 Gerar gráfico dos dados"):
-            numeric_cols = df.select_dtypes(include="number").columns
-            if len(numeric_cols) > 0:
-                fig, ax = plt.subplots()
-                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
-                ax.set_ylabel("Valores")
-                ax.set_title("Soma por coluna numérica")
-                st.pyplot(fig)
-            else:
-                st.info("Nenhuma coluna numérica para mostrar gráfico.")
-
-    with col_visual:
-        if st.button("🎨 Resumo visual simplificado"):
-            numeric_cols = df.select_dtypes(include="number").columns
-            if len(numeric_cols) > 0:
-                fig, ax = plt.subplots()
-                df[numeric_cols].mean().sort_values().plot(kind="bar", ax=ax, color="lightgreen")
-                ax.set_ylabel("Média por coluna")
-                ax.set_title("Resumo visual simplificado")
-                st.pyplot(fig)
-                st.write("Esse gráfico mostra a média de cada coluna numérica da planilha de forma simples.")
-            else:
-                st.info("Nenhuma coluna numérica para gerar resumo visual.")
-
-# -----------------------------
-# Histórico de perguntas
-# -----------------------------
-if st.session_state.get("historico"):
-    st.subheader("📜 Histórico de Perguntas (últimas 10)")
-    for h in reversed(st.session_state["historico"][-10:]):
-        st.markdown(f"**Pergunta:** {h['pergunta']}")
-        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
-        st.markdown(f"**Resposta:** {h['resposta']}")
-        if not h["util"]:
-            st.markdown(f"**Motivo não útil:** {h['motivo']}")
-        st.markdown("---")
-        # Mostrar resposta
-        st.subheader("✅ Resposta:")
-        st.write(resposta_final)
-
-        # Botões de feedback
-        st.subheader("Feedback da resposta")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("👍 Resposta útil"):
-                st.session_state["respostas_uteis"] += 1
-                st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
-                # Adicionar ao histórico
-                st.session_state["historico"].append(
-                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True, "motivo": ""}
-                )
-
-        with col2:
-            if st.button("👎 Resposta não útil"):
-                st.session_state["nao_util"] = True
-
-        if st.session_state["nao_util"]:
-            motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
-            if motivo:
-                st.warning("Obrigado pelo feedback! Registramos sua resposta.")
-                st.session_state["historico"].append(
-                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": False, "motivo": motivo}
-                )
-                st.session_state["nao_util"] = False
-
-        # Leitura em voz
-        tts = gTTS(text=resposta_final, lang='pt')
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-            tts.save(fp.name)
-            st.audio(fp.name, format="audio/mp3")
-
-    # -----------------------------
-    # Botões para gráficos e resumo visual
+    # Gráficos e resumo visual
     # -----------------------------
     st.subheader("📊 Visualizações")
     col_graf, col_visual = st.columns(2)
