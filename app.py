@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # Inicialização
 # -----------------------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-st.set_page_config(page_title="IA Leitora Amigável", layout="wide")
+st.set_page_config(page_title="IA Leitora de Planilhas - Pontuar tech", layout="wide")
 
 st.title("📊 IA Leitora de Planilhas - Pontuar tech")
 st.markdown("Siga os passos: 1️⃣ Carregue sua planilha → 2️⃣ Faça sua pergunta → 3️⃣ Veja e ouça a resposta!")
@@ -72,21 +72,13 @@ if uploaded_file is not None:
         # -----------------------------
         # Criar resumo seguro da planilha
         # -----------------------------
-        # Colunas e tipos
         colunas = df.dtypes.apply(lambda x: str(x)).to_dict()
-        
-        # Estatísticas numéricas
         estatisticas_numericas = df.select_dtypes(include="number").describe().to_dict()
-        
-        # Estatísticas categóricas
         estatisticas_categoricas = df.select_dtypes(include=["object", "category"]).describe().to_dict()
-        
         estatisticas = {
             "numéricas": estatisticas_numericas,
             "categóricas": estatisticas_categoricas
         }
-
-        # Amostra de dados
         amostra = df.head(20).to_dict(orient="records")
 
         resumo = {
@@ -96,34 +88,36 @@ if uploaded_file is not None:
         }
 
         # -----------------------------
-        # Chamar IA com prompt otimizado
+        # Prompt otimizado para gastos
+        # -----------------------------
+        prompt_system = (
+            "Você é um assistente especialista em análise de planilhas, com foco em **gastos e valores monetários**.\n"
+            "Regras obrigatórias:\n"
+            "1. Responda apenas com base nos dados fornecidos no resumo da planilha.\n"
+            "2. Se a resposta não estiver nos dados, diga exatamente: 'Não encontrado na planilha'.\n"
+            "3. Nunca invente dados, colunas ou valores que não existam.\n"
+            "4. Sempre identifique automaticamente quais colunas representam valores monetários. "
+            "Para isso, considere colunas com nomes como 'gasto', 'valor', 'custo', 'preço', 'despesa', ou colunas numéricas com valores compatíveis com dinheiro.\n"
+            "5. Organize a resposta em duas partes:\n"
+            "   - Resumo simples → apenas uma frase curta e direta, destacando o gasto mais relevante.\n"
+            "   - Detalhes adicionais → análise completa incluindo:\n"
+            "       • Total de gastos\n"
+            "       • Máximo, mínimo e média\n"
+            "       • Comparações entre produtos, categorias ou vendedores\n"
+            "       • Tendências ou padrões (ex: gastos concentrados, valores fora do padrão)\n"
+            "       • Sugestões práticas para reduzir custos ou otimizar recursos\n"
+            "6. Se os dados forem insuficientes, explique o que faltou para responder.\n"
+            "7. Sempre explique em linguagem clara, como se fosse para alguém leigo.\n"
+        )
+
+        # -----------------------------
+        # Chamada à API OpenAI
         # -----------------------------
         resposta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Você é um assistente especialista em análise de planilhas.\n"
-                        "Regras obrigatórias:\n"
-                        "1. Responda apenas com base nos dados fornecidos no resumo da planilha.\n"
-                        "2. Se a resposta não estiver nos dados, diga exatamente: 'Não encontrado na planilha'.\n"
-                        "3. Nunca invente dados, colunas ou valores que não existam.\n"
-                        "4. Organize a resposta em duas partes:\n"
-                        "   - Resumo simples → apenas uma frase curta e direta.\n"
-                        "   - Detalhes adicionais → uma análise completa incluindo:\n"
-                        "       • Comparações entre valores (máximo, mínimo, médias, totais)\n"
-                        "       • Destaque de valores fora do padrão\n"
-                        "       • Tendências observadas nos dados\n"
-                        "       • Sugestões práticas baseadas nos números\n"
-                        "5. Se os dados forem insuficientes, explique o que faltou para responder.\n"
-                        "6. Sempre explique em linguagem clara, como se fosse para alguém leigo.\n"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Resumo da planilha:\n{resumo}\n\nPergunta: {pergunta}"
-                }
+                {"role": "system", "content": prompt_system},
+                {"role": "user", "content": f"Resumo da planilha:\n{resumo}\n\nPergunta: {pergunta}"}
             ]
         )
 
@@ -217,10 +211,4 @@ if uploaded_file is not None:
 # -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas (últimas 10)")
-    for h in reversed(st.session_state["historico"][-10:]):
-        st.markdown(f"**Pergunta:** {h['pergunta']}")
-        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
-        st.markdown(f"**Resposta:** {h['resposta']}")
-        if not h["util"]:
-            st.markdown(f"**Motivo não útil:** {h['motivo']}")
-        st.markdown("---")
+    for h in reversed(st.session_state["
