@@ -69,24 +69,45 @@ if uploaded_file is not None:
     tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
 
     if st.button("🔍 Perguntar") and pergunta:
-        resumo = df.describe(include="all").to_string()
+        # Criar resumo estruturado para IA
+        colunas = df.dtypes.to_dict()
+        estatisticas = df.describe(include="all", datetime_is_numeric=True).to_dict()
+        amostra = df.head(20).to_dict(orient="records")
 
-        # Chamar IA
+        resumo = {
+            "colunas": colunas,
+            "estatisticas": estatisticas,
+            "amostra": amostra
+        }
+
+        # -----------------------------
+        # Chamar IA com prompt otimizado
+        # -----------------------------
         resposta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "Você é um assistente que explica dados de planilha de forma MUITO simples. "
-                        "Gere duas respostas separadas:\n"
-                        "1) Resumo simples: curto e direto para qualquer pessoa.\n"
-                        "2) Detalhes adicionais: análise completa, insights, comparações, tendências e sugestões para tornar a resposta mais objetiva."
+                        "Você é um assistente especialista em análise de planilhas.\n"
+                        "Regras obrigatórias:\n"
+                        "1. Responda apenas com base nos dados fornecidos no resumo da planilha.\n"
+                        "2. Se a resposta não estiver nos dados, diga exatamente: 'Não encontrado na planilha'.\n"
+                        "3. Nunca invente dados, colunas ou valores que não existam.\n"
+                        "4. Organize a resposta em duas partes:\n"
+                        "   - Resumo simples → apenas uma frase curta e direta.\n"
+                        "   - Detalhes adicionais → uma análise completa incluindo:\n"
+                        "       • Comparações entre valores (máximo, mínimo, médias, totais)\n"
+                        "       • Destaque de valores fora do padrão\n"
+                        "       • Tendências observadas nos dados\n"
+                        "       • Sugestões práticas baseadas nos números\n"
+                        "5. Se os dados forem insuficientes, explique o que faltou para responder.\n"
+                        "6. Sempre explique em linguagem clara, como se fosse para alguém leigo.\n"
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Planilha resumida:\n{resumo}\nPergunta: {pergunta}"
+                    "content": f"Resumo da planilha:\n{resumo}\n\nPergunta: {pergunta}"
                 }
             ]
         )
@@ -103,6 +124,84 @@ if uploaded_file is not None:
 
         resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
 
+        # Mostrar resposta
+        st.subheader("✅ Resposta:")
+        st.write(resposta_final)
+
+        # Botões de feedback
+        st.subheader("Feedback da resposta")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("👍 Resposta útil"):
+                st.session_state["respostas_uteis"] += 1
+                st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
+                # Adicionar ao histórico
+                st.session_state["historico"].append(
+                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": True, "motivo": ""}
+                )
+
+        with col2:
+            if st.button("👎 Resposta não útil"):
+                st.session_state["nao_util"] = True
+
+        if st.session_state["nao_util"]:
+            motivo = st.text_input("❌ Por favor, informe o motivo da resposta não ser útil:")
+            if motivo:
+                st.warning("Obrigado pelo feedback! Registramos sua resposta.")
+                st.session_state["historico"].append(
+                    {"pergunta": pergunta, "resposta": resposta_final, "tipo": tipo_resposta, "util": False, "motivo": motivo}
+                )
+                st.session_state["nao_util"] = False
+
+        # Leitura em voz
+        tts = gTTS(text=resposta_final, lang='pt')
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+            tts.save(fp.name)
+            st.audio(fp.name, format="audio/mp3")
+
+    # -----------------------------
+    # Botões para gráficos e resumo visual
+    # -----------------------------
+    st.subheader("📊 Visualizações")
+    col_graf, col_visual = st.columns(2)
+
+    with col_graf:
+        if st.button("📈 Gerar gráfico dos dados"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
+                ax.set_ylabel("Valores")
+                ax.set_title("Soma por coluna numérica")
+                st.pyplot(fig)
+            else:
+                st.info("Nenhuma coluna numérica para mostrar gráfico.")
+
+    with col_visual:
+        if st.button("🎨 Resumo visual simplificado"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].mean().sort_values().plot(kind="bar", ax=ax, color="lightgreen")
+                ax.set_ylabel("Média por coluna")
+                ax.set_title("Resumo visual simplificado")
+                st.pyplot(fig)
+                st.write("Esse gráfico mostra a média de cada coluna numérica da planilha de forma simples.")
+            else:
+                st.info("Nenhuma coluna numérica para gerar resumo visual.")
+
+# -----------------------------
+# Histórico de perguntas
+# -----------------------------
+if st.session_state.get("historico"):
+    st.subheader("📜 Histórico de Perguntas (últimas 10)")
+    for h in reversed(st.session_state["historico"][-10:]):
+        st.markdown(f"**Pergunta:** {h['pergunta']}")
+        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
+        st.markdown(f"**Resposta:** {h['resposta']}")
+        if not h["util"]:
+            st.markdown(f"**Motivo não útil:** {h['motivo']}")
+        st.markdown("---")
         # Mostrar resposta
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
