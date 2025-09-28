@@ -58,24 +58,37 @@ if uploaded_file is not None:
         st.session_state["tipo_planilha"] = tipo_planilha
 
     # -----------------------------
-    # Detectar colunas financeiras
+    # Detecção avançada de colunas monetárias R$ (mesmo sem símbolo)
     # -----------------------------
-    def detectar_colunas_financeiras(df):
+    def detectar_colunas_financeiras_avancado(df):
         keywords = ["gasto", "valor", "custo", "preço", "despesa", "total"]
-        colunas_financeiras = [
-            col for col in df.columns if any(k.lower() in col.lower() for k in keywords)
-        ]
-        # Adiciona colunas numéricas que parecem monetárias
-        for col in df.select_dtypes(include="number").columns:
-            if df[col].max() > 0 and col not in colunas_financeiras:
-                colunas_financeiras.append(col)
-        return colunas_financeiras
+        colunas_financeiras = []
 
-    col_financeiras = detectar_colunas_financeiras(df)
+        # Renomeia colunas sem nome
+        new_columns = []
+        for i, x in enumerate(df.columns):
+            if pd.isna(x) or str(x).strip().lower() in ["unnamed", "untitled"]:
+                new_columns.append(f"Col_{i}")
+            else:
+                new_columns.append(x)
+        df.columns = new_columns
+
+        for col in df.columns:
+            texto_col = str(col).lower()
+            if any(k in texto_col for k in keywords):
+                colunas_financeiras.append(col)
+            elif pd.api.types.is_numeric_dtype(df[col]):
+                # Considera monetário se valores positivos e razoavelmente grandes (>1)
+                if df[col].max() > 1:
+                    colunas_financeiras.append(col)
+
+        return list(set(colunas_financeiras)), df
+
+    col_financeiras, df = detectar_colunas_financeiras_avancado(df)
+
     st.sidebar.subheader("💰 Colunas financeiras detectadas")
     st.sidebar.write(col_financeiras)
 
-    # Permitir que o usuário confirme/ajuste colunas financeiras
     col_financeiras_ajustadas = st.multiselect(
         "Selecione as colunas financeiras relevantes:", options=df.columns, default=col_financeiras
     )
@@ -101,10 +114,179 @@ if uploaded_file is not None:
         st.session_state["respostas_uteis"] = 0
         st.success("✅ Histórico limpo!")
 
-    st.sidebar.metric("Respostas úteis", st.session_state["respostas_uteis"])
+    st.sidebar.metric("Respostas úteis", st.session_state.get("respostas_uteis", 0))
 
     # -----------------------------
     # Caixa de pergunta
+    # -----------------------------
+    pergunta = st.text_input("💬 Faça sua pergunta:", st.session_state.get("pergunta", ""))
+    tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
+
+    if st.button("🔍 Perguntar") and pergunta and tipo_planilha:
+        # -----------------------------
+        # Normalizar valores monetários R$
+        # -----------------------------
+        df_normalizado = df.copy()
+        for col in col_financeiras_ajustadas:
+            df_normalizado[col] = pd.to_numeric(df_normalizado[col], errors="coerce").fillna(0)
+            df_normalizado[col] = df_normalizado[col].apply(
+                lambda x: round(x, 2) if len(str(x).split(".")[1]) > 2 else x
+            )
+
+        # -----------------------------
+        # Preparar resumo para IA
+        # -----------------------------
+        colunas = df_normalizado.dtypes.apply(lambda x: str(x)).to_dict()
+        estatisticas_numericas = df_normalizado.describe().to_dict()
+        estatisticas_categoricas = df_normalizado.select_dtypes(include=["object", "category"]).describe().to_dict()
+        amostra = df_normalizado.head(20).to_dict(orient="records")
+
+        resumo = {
+            "tipo_planilha": tipo_planilha,
+            "colunas": colunas,
+            "colunas_financeiras": col_financeiras_ajustadas,
+            "estatisticas_numéricas": estatisticas_numericas,
+            "estatisticas_categoricas": estatisticas_categoricas,
+            "amostra": amostra,
+            "info_adicional": st.session_state.get("info_adicional", "")
+        }
+
+        # -----------------------------
+        # Prompt otimizado para IA
+        # -----------------------------
+        prompt_system = (
+            "Você é um assistente especialista em análise de planilhas, com foco em gastos e valores monetários em R$.\n"
+            "Regras obrigatórias:\n"
+            "1. Responda apenas com base nos dados fornecidos.\n"
+            "2. Se a resposta não estiver nos dados, diga: 'Não encontrado na planilha'.\n"
+            "3. Nunca invente dados.\n"
+            "4. Foque nas colunas financeiras.\n"
+            "5. Organize em duas partes:\n"
+            "   - Resumo simples → frase curta destacando o gasto mais relevante.\n"
+            "   - Detalhes adicionais → total, máximo, mínimo, média, comparações, padrões e sugestões.\n"
+            "6. Indique claramente se algum valor foi arredondado.\n"
+            "7. Use linguagem clara e objetiva."
+        )
+
+        resposta = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt_system},
+                {"role": "user", "content": f"Resumo da planilha:\n{resumo}\n\nPergunta: {pergunta}"}
+            ]
+        )
+
+        texto_completo = resposta.choices[0].message.content
+
+        if "Resumo simples:" in texto_completo and "Detalhes adicionais:" in texto_completo:
+            resumo_simples = texto_completo.split("Resumo simples:")[1].split("Detalhes adicionais:")[0].strip()
+            detalhes = texto_completo.split("Detalhes adicionais:")[1].strip()
+        else:
+            resumo_simples = texto_completo
+            detalhes = texto_completo
+
+        resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
+
+        # -----------------------------
+        # Mostrar resposta
+        # -----------------------------
+        st.subheader("✅ Resposta:")
+        st.write(resposta_final)
+
+        # -----------------------------
+        # Feedback
+        # -----------------------------
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("👍 Resposta útil", key="btn_util"):
+                st.session_state["respostas_uteis"] += 1
+                st.session_state["historico"].append({
+                    "pergunta": pergunta,
+                    "resposta": resposta_final,
+                    "tipo": tipo_resposta,
+                    "util": True,
+                    "motivo": ""
+                })
+                st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
+
+        with col2:
+            if st.button("👎 Resposta não útil", key="btn_nao_util"):
+                st.session_state["nao_util"] = True
+
+        if st.session_state["nao_util"]:
+            motivo = st.text_input("❌ Motivo da resposta não ser útil:", key="motivo_feedback")
+            info_adicional = st.text_area(
+                "📝 Forneça mais informações sobre a planilha (colunas, contexto, período, etc.):",
+                key="info_feedback"
+            )
+            if motivo and info_adicional:
+                st.warning("Feedback registrado com informações adicionais.")
+                st.session_state["historico"].append({
+                    "pergunta": pergunta,
+                    "resposta": resposta_final,
+                    "tipo": tipo_resposta,
+                    "util": False,
+                    "motivo": motivo
+                })
+                st.session_state["info_adicional"] = info_adicional
+                st.session_state["nao_util"] = False
+
+        # -----------------------------
+        # Áudio usando BytesIO
+        # -----------------------------
+        if resposta_final.strip():
+            try:
+                tts = gTTS(text=resposta_final, lang='pt')
+                mp3_fp = BytesIO()
+                tts.write_to_fp(mp3_fp)
+                st.audio(mp3_fp.getvalue(), format="audio/mp3")
+            except Exception as e:
+                st.warning(f"Não foi possível gerar áudio: {e}")
+        else:
+            st.info("🗣 Nenhum texto para gerar áudio.")
+
+    # -----------------------------
+    # Gráficos
+    # -----------------------------
+    st.subheader("📊 Visualizações")
+    col_graf, col_visual = st.columns(2)
+
+    with col_graf:
+        if st.button("📈 Gráfico dos dados"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].sum().sort_values().plot(kind="bar", ax=ax, color="skyblue")
+                ax.set_ylabel("Valores")
+                ax.set_title("Soma por coluna numérica")
+                st.pyplot(fig)
+            else:
+                st.info("Nenhuma coluna numérica.")
+
+    with col_visual:
+        if st.button("🎨 Resumo visual simplificado"):
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                fig, ax = plt.subplots()
+                df[numeric_cols].mean().sort_values().plot(kind="bar", ax=ax, color="lightgreen")
+                ax.set_ylabel("Média")
+                ax.set_title("Resumo visual simplificado")
+                st.pyplot(fig)
+            else:
+                st.info("Nenhuma coluna numérica.")
+
+# -----------------------------
+# Histórico
+# -----------------------------
+if st.session_state.get("historico"):
+    st.subheader("📜 Histórico de Perguntas (últimas 10)")
+    for h in reversed(st.session_state["historico"][-10:]):
+        st.markdown(f"**Pergunta:** {h['pergunta']}")
+        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
+        st.markdown(f"**Resposta:** {h['resposta']}")
+        if not h["util"]:
+            st.markdown(f"**Motivo não útil:** {h['motivo']}")
+        st.markdown("---")
     # -----------------------------
     pergunta = st.text_input("💬 Faça sua pergunta:", st.session_state.get("pergunta", ""))
     tipo_resposta = st.radio("Escolha o tipo de resposta:", ["Resumo simples", "Detalhes adicionais"], index=0)
