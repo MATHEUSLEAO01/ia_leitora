@@ -205,10 +205,12 @@ if uploaded_file is not None:
                 st.write("Esse gráfico mostra a média de cada coluna numérica da planilha de forma simples.")
             else:
                 st.info("Nenhuma coluna numérica para gerar resumo visual.")
-
-# -----------------------------
-# Histórico de perguntas
-# -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas (últimas 10)")
-    for h in reversed(st.session_state["
+    for h in reversed(st.session_state["historico"][-10:]):
+        st.markdown(f"**Pergunta:** {h['pergunta']}")
+        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
+        st.markdown(f"**Resposta:** {h['resposta']}")
+        if not h["util"]:
+            st.markdown(f"**Motivo não útil:** {h['motivo']}")
+
