@@ -21,17 +21,15 @@ st.markdown(
 # Sessão
 # -----------------------------
 if "historico" not in st.session_state:
-    st.session_state["historico"] = {}
-if "contador" not in st.session_state:
-    st.session_state["contador"] = 0
+    st.session_state["historico"] = []
+if "respostas_uteis" not in st.session_state:
+    st.session_state["respostas_uteis"] = 0
 if "nao_util" not in st.session_state:
     st.session_state["nao_util"] = False
 if "info_adicional" not in st.session_state:
     st.session_state["info_adicional"] = ""
 if "tipo_planilha" not in st.session_state:
     st.session_state["tipo_planilha"] = ""
-if "respostas_uteis" not in st.session_state:
-    st.session_state["respostas_uteis"] = 0
 
 # -----------------------------
 # Upload da planilha
@@ -57,21 +55,6 @@ if uploaded_file:
         st.session_state["tipo_planilha"] = tipo_planilha
 
     # -----------------------------
-    # Função de registro do histórico
-    # -----------------------------
-    def registrar_historico(pergunta, resposta, tipo, util, motivo="", info_adicional=""):
-        st.session_state["contador"] += 1
-        key = f"q_{st.session_state['contador']}"
-        st.session_state["historico"][key] = {
-            "pergunta": pergunta,
-            "resposta": resposta,
-            "tipo": tipo,
-            "util": util,
-            "motivo": motivo,
-            "info_adicional": info_adicional
-        }
-
-    # -----------------------------
     # Detecção avançada de colunas
     # -----------------------------
     def detectar_colunas_avancado(df):
@@ -90,24 +73,29 @@ if uploaded_file:
 
         for col in df.columns:
             texto_col = str(col).lower()
+            # Se contiver palavras-chave
             if any(k in texto_col for k in keywords):
                 colunas_financeiras.append(col)
+            # Se for numérico
             elif pd.api.types.is_numeric_dtype(df[col]):
                 if df[col].max() > 1:
                     colunas_financeiras.append(col)
             else:
                 # Colunas quase numéricas: 1 ou 2 valores não numéricos
                 num_na = pd.to_numeric(df[col], errors='coerce')
-                n_total = len(df[col])
                 n_na_count = num_na.isna().sum()
                 if 0 < n_na_count <= 2:
                     colunas_quase_numericas.append(col)
+
+        # Se nenhuma coluna financeira detectada, sugerir todas numéricas
+        if len(colunas_financeiras) == 0:
+            colunas_financeiras = df.select_dtypes(include="number").columns.tolist()
 
         return list(set(colunas_financeiras)), list(set(colunas_quase_numericas)), df
 
     col_financeiras, col_quase_numericas, df = detectar_colunas_avancado(df)
 
-    st.sidebar.subheader("💰 Colunas financeiras detectadas")
+    st.sidebar.subheader("💰 Colunas financeiras detectadas automaticamente")
     st.sidebar.write(col_financeiras)
     st.sidebar.subheader("🔢 Colunas quase numéricas (descrições possíveis)")
     st.sidebar.write(col_quase_numericas)
@@ -133,7 +121,7 @@ if uploaded_file:
 
     # Limpar histórico
     if st.sidebar.button("🗑 Limpar Histórico"):
-        st.session_state["historico"] = {}
+        st.session_state["historico"] = []
         st.session_state["respostas_uteis"] = 0
         st.success("✅ Histórico limpo!")
 
@@ -150,7 +138,7 @@ if uploaded_file:
         for col in col_financeiras_ajustadas:
             df_normalizado[col] = pd.to_numeric(df_normalizado[col], errors="coerce").fillna(0)
             df_normalizado[col] = df_normalizado[col].apply(
-                lambda x: round(x, 2) if len(str(x).split(".")[1]) > 2 else x
+                lambda x: round(x, 2) if isinstance(x, float) and len(str(x).split(".")[1]) > 2 else x
             )
 
         # Detectar outliers simples (valores > 2 desvios padrão)
@@ -194,15 +182,22 @@ if uploaded_file:
             "Use linguagem clara e objetiva, acessível a qualquer pessoa."
         )
 
-        resposta = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": prompt_system},
-                {"role": "user", "content": f"Resumo da planilha:\n{resumo}\nPergunta: {pergunta}"}
-            ]
-        )
+        # -----------------------------
+        # Chamada segura à API
+        # -----------------------------
+        try:
+            resposta = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": prompt_system},
+                    {"role": "user", "content": f"Resumo da planilha:\n{resumo}\nPergunta: {pergunta}"}
+                ]
+            )
+            texto_completo = resposta.choices[0].message.content
+        except Exception as e:
+            st.error(f"❌ Erro na API OpenAI: {e}")
+            st.stop()
 
-        texto_completo = resposta.choices[0].message.content
         if "Resumo simples:" in texto_completo and "Detalhes adicionais:" in texto_completo:
             resumo_simples = texto_completo.split("Resumo simples:")[1].split("Detalhes adicionais:")[0].strip()
             detalhes = texto_completo.split("Detalhes adicionais:")[1].strip()
@@ -212,7 +207,9 @@ if uploaded_file:
 
         resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
 
+        # -----------------------------
         # Mostrar resposta
+        # -----------------------------
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
@@ -221,23 +218,35 @@ if uploaded_file:
         # -----------------------------
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("👍 Resposta útil", key=f"util_{st.session_state['contador']}"):
+            if st.button("👍 Resposta útil", key=f"btn_util_{pergunta}"):
                 st.session_state["respostas_uteis"] += 1
-                registrar_historico(pergunta, resposta_final, tipo_resposta, util=True)
+                st.session_state["historico"].append({
+                    "pergunta": pergunta,
+                    "resposta": resposta_final,
+                    "tipo": tipo_resposta,
+                    "util": True,
+                    "motivo": ""
+                })
                 st.success(f"Resposta marcada como útil! Total: {st.session_state['respostas_uteis']}")
 
         with col2:
-            if st.button("👎 Resposta não útil", key=f"nao_util_{st.session_state['contador']}"):
+            if st.button("👎 Resposta não útil", key=f"btn_nao_util_{pergunta}"):
                 st.session_state["nao_util"] = True
 
         if st.session_state["nao_util"]:
-            motivo = st.text_input("❌ Motivo da resposta não ser útil:", key=f"motivo_{st.session_state['contador']}")
+            motivo = st.text_input("❌ Motivo da resposta não ser útil:", key=f"motivo_{pergunta}")
             info_adicional = st.text_area(
                 "📝 Mais informações sobre a planilha (colunas, contexto, período, etc.):",
-                key=f"info_{st.session_state['contador']}"
+                key=f"info_{pergunta}"
             )
             if motivo and info_adicional:
-                registrar_historico(pergunta, resposta_final, tipo_resposta, util=False, motivo=motivo, info_adicional=info_adicional)
+                st.session_state["historico"].append({
+                    "pergunta": pergunta,
+                    "resposta": resposta_final,
+                    "tipo": tipo_resposta,
+                    "util": False,
+                    "motivo": motivo
+                })
                 st.session_state["info_adicional"] = info_adicional
                 st.session_state["nao_util"] = False
                 st.success("Feedback registrado com sucesso!")
@@ -289,12 +298,10 @@ if uploaded_file:
 # -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas (últimas 10)")
-    for key, h in reversed(list(st.session_state["historico"].items())[-10:]):
+    for h in reversed(st.session_state["historico"][-10:]):
         st.markdown(f"**Pergunta:** {h['pergunta']}")
         st.markdown(f"**Tipo de resposta:** {h['tipo']}")
         st.markdown(f"**Resposta:** {h['resposta']}")
-        if h.get("info_adicional"):
-            st.markdown(f"**Info adicional:** {h['info_adicional']}")
         if not h["util"]:
             st.markdown(f"**Motivo não útil:** {h['motivo']}")
         st.markdown("---")
