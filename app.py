@@ -73,21 +73,17 @@ if uploaded_file:
 
         for col in df.columns:
             texto_col = str(col).lower()
-            # Se contiver palavras-chave
             if any(k in texto_col for k in keywords):
                 colunas_financeiras.append(col)
-            # Se for numérico
             elif pd.api.types.is_numeric_dtype(df[col]):
                 if df[col].max() > 1:
                     colunas_financeiras.append(col)
             else:
-                # Colunas quase numéricas: 1 ou 2 valores não numéricos
                 num_na = pd.to_numeric(df[col], errors='coerce')
                 n_na_count = num_na.isna().sum()
                 if 0 < n_na_count <= 2:
                     colunas_quase_numericas.append(col)
 
-        # Se nenhuma coluna financeira detectada, sugerir todas numéricas
         if len(colunas_financeiras) == 0:
             colunas_financeiras = df.select_dtypes(include="number").columns.tolist()
 
@@ -119,7 +115,6 @@ if uploaded_file:
         if st.sidebar.button(p, key=f"faq_{p}"):
             st.session_state["pergunta"] = p
 
-    # Limpar histórico
     if st.sidebar.button("🗑 Limpar Histórico"):
         st.session_state["historico"] = []
         st.session_state["respostas_uteis"] = 0
@@ -141,7 +136,6 @@ if uploaded_file:
                 lambda x: round(x, 2) if isinstance(x, float) and len(str(x).split(".")[1]) > 2 else x
             )
 
-        # Detectar outliers simples (valores > 2 desvios padrão)
         outliers = {}
         for col in col_financeiras_ajustadas:
             if df_normalizado[col].dtype.kind in 'iuf':
@@ -151,10 +145,16 @@ if uploaded_file:
                 limite_inferior = media - 2 * desvio
                 outliers[col] = df_normalizado[(df_normalizado[col] > limite_superior) | (df_normalizado[col] < limite_inferior)][col].tolist()
 
-        # Resumo para IA
         colunas = df_normalizado.dtypes.apply(lambda x: str(x)).to_dict()
         estatisticas_numericas = df_normalizado.describe().to_dict()
-        estatisticas_categoricas = df_normalizado.select_dtypes(include=["object", "category"]).describe().to_dict()
+
+        # ✅ Correção: checagem de colunas categóricas
+        df_categoricas = df_normalizado.select_dtypes(include=["object", "category"])
+        if not df_categoricas.empty:
+            estatisticas_categoricas = df_categoricas.describe().to_dict()
+        else:
+            estatisticas_categoricas = {"info": "Nenhuma coluna categórica encontrada"}
+
         amostra = df_normalizado.head(20).to_dict(orient="records")
 
         resumo = {
@@ -182,9 +182,6 @@ if uploaded_file:
             "Use linguagem clara e objetiva, acessível a qualquer pessoa."
         )
 
-        # -----------------------------
-        # Chamada segura à API
-        # -----------------------------
         try:
             resposta = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -207,15 +204,9 @@ if uploaded_file:
 
         resposta_final = resumo_simples if tipo_resposta == "Resumo simples" else detalhes
 
-        # -----------------------------
-        # Mostrar resposta
-        # -----------------------------
         st.subheader("✅ Resposta:")
         st.write(resposta_final)
 
-        # -----------------------------
-        # Feedback
-        # -----------------------------
         col1, col2 = st.columns(2)
         with col1:
             if st.button("👍 Resposta útil", key=f"btn_util_{pergunta}"):
@@ -251,9 +242,6 @@ if uploaded_file:
                 st.session_state["nao_util"] = False
                 st.success("Feedback registrado com sucesso!")
 
-        # -----------------------------
-        # Áudio seguro
-        # -----------------------------
         if resposta_final.strip():
             try:
                 tts = gTTS(text=resposta_final, lang='pt')
@@ -263,9 +251,6 @@ if uploaded_file:
             except Exception as e:
                 st.warning(f"Não foi possível gerar áudio: {e}")
 
-    # -----------------------------
-    # Visualizações
-    # -----------------------------
     st.subheader("📊 Visualizações")
     col_graf, col_visual = st.columns(2)
 
@@ -293,15 +278,7 @@ if uploaded_file:
             else:
                 st.info("Nenhuma coluna numérica.")
 
-# -----------------------------
-# Histórico
-# -----------------------------
 if st.session_state.get("historico"):
     st.subheader("📜 Histórico de Perguntas (últimas 10)")
     for h in reversed(st.session_state["historico"][-10:]):
         st.markdown(f"**Pergunta:** {h['pergunta']}")
-        st.markdown(f"**Tipo de resposta:** {h['tipo']}")
-        st.markdown(f"**Resposta:** {h['resposta']}")
-        if not h["util"]:
-            st.markdown(f"**Motivo não útil:** {h['motivo']}")
-        st.markdown("---")
